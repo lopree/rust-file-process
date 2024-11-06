@@ -3,7 +3,7 @@ use glob::glob;
 use csv::ReaderBuilder;
 use chrono::Local;
 ///区分文件，移动到指定文件夹
-pub fn move_file() -> Result<(), Box<dyn Error>> {
+pub async fn move_file() -> Result<(), Box<dyn Error>> {
     let dir_path = Path::new("D:\\Download\\IP\\type01_IP"); // 替换为实际文件夹路径
     let target_dir = Path::new("D:\\Download\\IP\\type02_IP"); // 替换为目标文件夹路径
     let ignore_subfolders = false; // true: 只获取当前文件夹的 CSV，false: 包括所有子文件夹

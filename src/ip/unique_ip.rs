@@ -1,5 +1,4 @@
-use std::{collections::HashSet, error::Error, fs::{File, OpenOptions}, io::{BufRead,BufReader, Write,BufWriter}, path::{PathBuf, Path}};
-
+use std::{collections::HashSet, error::Error, fs::File, io::{BufRead,BufReader, Write,BufWriter}, path::Path};
 use rand::seq::SliceRandom; // 导入 SliceRandom trait
 use rand::thread_rng; // 导入 thread_rng
 use regex::Regex;
@@ -7,8 +6,10 @@ use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC}; // 导入 URL 编
 use std::collections::HashMap;
 use crate::ip::region_code::get_region_name;
 use crate::ip::move_file::get_csv_files;
+use rusqlite::Connection;
+use crate::ip::ip_data::{ConnectionData, insert_connection};
 ///telegram 获得的文件,去除重复ip
-pub fn unique_ip(file_path: &str) -> Result<(), Box<dyn Error>> {
+pub async fn unique_ip(file_path: &str) -> Result<(), Box<dyn Error>> {
     // 读取文件夹下的所有csv文件,忽略子文件夹
     let files = get_csv_files(file_path.as_ref(),true);
     //遍历所有文件，将内容聚合到一起
@@ -74,9 +75,10 @@ pub fn unique_ip(file_path: &str) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 ///保留第一行的标题栏，删除多余的标题
-pub fn check_txt_file(file_path: &str) -> Result<(), Box<dyn Error>> { 
+pub async fn check_txt_file(file_path: &str) -> Result<(), Box<dyn Error>> { 
     let file = File::open(file_path)?; // 打开指定路径的文件
     let reader = BufReader::new(file);
+    let mut lines = reader.lines();
     
     let mut valid_lines = Vec::new();
     let mut line_count = 0;
@@ -84,9 +86,10 @@ pub fn check_txt_file(file_path: &str) -> Result<(), Box<dyn Error>> {
 
     // 定义正则表达式以匹配以汉字结尾的行
     let re = Regex::new(r"[\u4e00-\u9fa5]$").unwrap(); // 匹配汉字
-
+    // 将第一行添加到有效行中
+    valid_lines.push(lines.next().unwrap()?);
     // 逐行读取文件
-    for line in reader.lines().skip(1) {
+    for line in lines.skip(1) {
         match line {
             Ok(content) => {
                 line_count += 1;
@@ -117,26 +120,26 @@ pub fn check_txt_file(file_path: &str) -> Result<(), Box<dyn Error>> {
     writer.flush()?; // 确保所有数据都被写入
     Ok(())
 }
-
-// 按照指定格式填入数据
-//标准：
 //将第一列的地址和第二列的端口填到上面的@后面，第四列填到#号之后
 ///CF格式批量改写
-pub fn fill_data(file_path: &Path) -> Result<(), Box<dyn Error>> {
+pub async fn fill_data(file_path: &str) -> Result<(), Box<dyn Error>> {
     let file = File::open(file_path)?; // 打开指定路径的文件
     let reader = BufReader::new(file);
-
+    //CF文件格式
     let uuid = "43ee9711-f9e6-47ba-aba8-ea179eb6ada3";
     let output_file_path = Path::new("D:\\Download\\IP\\type02_IP\\output\\vless\\formatted_output.txt");
-
+    //nerd文件格式
+    let uuid_nerd = "030d38b6-2f58-4704-e6b3-d4db837aaa5c";
+    let output_file_path_nerd = Path::new("D:\\Download\\IP\\type02_IP\\output\\vless\\nerd_formatted_output.txt");
     
     let mut formatted_lines = Vec::new();
+    let mut nerd_formatted_lines = Vec::new();
     let mut line_count = 0;
     // 定义国家代码数组
     let countries = ["KR", "JP", "SG", "HK"];
 
     // 逐行读取文件
-    for line in reader.lines() {
+    for line in reader.lines().skip(1) {
         match line {
             Ok(content) => {
                 line_count += 1;
@@ -152,7 +155,6 @@ pub fn fill_data(file_path: &Path) -> Result<(), Box<dyn Error>> {
                     let fourth_column = parts[3]; // 第四列
                      // 将地区缩写转换为中文
                      let region_name = get_region_name(fourth_column);
-
                      // 将中文进行 URL 编码
                      let encoded_region_name = utf8_percent_encode(&region_name.unwrap(), NON_ALPHANUMERIC).to_string();
                     
@@ -164,99 +166,14 @@ pub fn fill_data(file_path: &Path) -> Result<(), Box<dyn Error>> {
                     );
 
                     formatted_lines.push(formatted_line); // 保存格式化后的行
-                }
-            }
-            Err(e) => println!("读取行时出错: {}", e),
-        }
-    }
-
-    println!("文件 {:?} 有 {} 行", file_path, line_count);
-
-    // 将格式化后的行写回文件或输出
-    let output_file = File::create(output_file_path)?; // 使用传入的 file_path
-    let mut writer = BufWriter::new(output_file);
-    
-    // 写入格式化后的行
-    for line in formatted_lines {
-        writeln!(writer, "{}", line)?; 
-    }
-    
-    writer.flush()?; // 确保所有数据都被写入
-    Ok(())
-
-
-}
-
-
-pub fn fill_data_nard(file_path: &Path) -> Result<(), Box<dyn Error>> {
-    let file = File::open(file_path)?; // 打开指定路径的文件
-    let reader = BufReader::new(file);
-
-    let uuid = "030d38b6-2f58-4704-e6b3-d4db837aaa5c";
-    let output_file_path = Path::new("D:\\Download\\IP\\type02_IP\\output\\vless\\nard_formatted_output.txt");
-
-    
-    let mut formatted_lines = Vec::new();
-    let mut line_count = 0;
-    // 定义国家代码数组
-    let countries = ["KR", "JP", "SG", "HK"];
-    // 定义地区缩写到中文的映射
-    let region_map = [
-        ("SJC", "美国圣何塞"),
-        ("ARN", "瑞典阿尔斯塔"),
-        ("IAD", "美国华盛顿"),
-        ("SEA", "美国西雅图"),
-        ("NRT", "日本成田"),
-        ("LHR", "英国伦敦"),
-        ("BOM", "印度孟买"),
-        ("ORD", "美国芝加哥"),
-        ("YUL", "加拿大蒙特利尔"),
-        ("YYZ", "加拿大多伦多"),
-        ("ZRH", "瑞士苏黎世"),
-        ("SIN", "新加坡"),
-        ("SYD", "澳大利亚悉尼"),
-        ("HKG", "中国香港"),
-        ("TYO", "日本东京"),
-        ("ICN", "韩国仁川"),
-        ("KUL", "马来西亚吉隆坡"),
-        ("MXP", "意大利米兰"),
-        ("FRA", "德国法兰克福"),
-        ("AMS", "荷兰阿姆斯特丹"),
-        ("LAX", "美国洛杉矶"),
-        ("IAD", "美国华盛顿"),
-        ("GRU", "巴西圣保罗"),
-        ("CDG", "法国巴黎"),
-    ].iter().cloned().collect::<std::collections::HashMap<_, _>>();
-
-    // 逐行读取文件
-    for line in reader.lines() {
-        match line {
-            Ok(content) => {
-                line_count += 1;
-                // 分割行内容
-                let parts: Vec<&str> = content.split(',').collect();
-                if parts.len() >= 4 {
-                    // 提取 IP 地址、端口和第四列
-                    let ip_address = parts[0]; // 第一列
-                    let port = parts[1]; // 第二列
-                     // 随机选择国家代码
-                     let mut rng = thread_rng();
-                     let country = countries.choose(&mut rng).unwrap(); // 随机选择一个国家代码
-                    let fourth_column = parts[3]; // 第四列
-                     // 将地区缩写转换为中文
-                     let region_name = region_map.get(fourth_column).unwrap_or(&"未知").to_string();
-
-                     // 将中文进行 URL 编码
-                     let encoded_region_name = utf8_percent_encode(&region_name, NON_ALPHANUMERIC).to_string();
-                    
-
-                     // 格式化为指定字符串
-                     let formatted_line = format!(
+                    // 格式化为指定字符串
+                    let nerd_formatted_line = format!(
                         "vless://{}@{}:{}?encryption=none&security=tls&sni=notls.rookstein.top&alpn=http%2F1.1&allowInsecure=1&type=ws&host=notls.rookstein.top&path=%2F#{}",
-                        uuid, ip_address, port, encoded_region_name // 更新为新的格式
+                        uuid_nerd, ip_address, port, encoded_region_name // 更新为新的格式
                     );
 
-                    formatted_lines.push(formatted_line); // 保存格式化后的行
+                    nerd_formatted_lines.push(nerd_formatted_line); // 保存格式化后的行
+
                 }
             }
             Err(e) => println!("读取行时出错: {}", e),
@@ -266,22 +183,27 @@ pub fn fill_data_nard(file_path: &Path) -> Result<(), Box<dyn Error>> {
     println!("文件 {:?} 有 {} 行", file_path, line_count);
 
     // 将格式化后的行写回文件或输出
-    let output_file = File::create(output_file_path)?; // 使用传入的 file_path
+    let output_file = File::create(output_file_path)?; 
+    let output_file_nerd = File::create(output_file_path_nerd)?; 
     let mut writer = BufWriter::new(output_file);
+    let mut writer_nerd = BufWriter::new(output_file_nerd);
     
     // 写入格式化后的行
     for line in formatted_lines {
         writeln!(writer, "{}", line)?; 
     }
-    
+    for line in nerd_formatted_lines {
+        writeln!(writer_nerd, "{}", line)?; 
+    }
     writer.flush()?; // 确保所有数据都被写入
+    writer_nerd.flush()?; // 确保所有数据都被写入
     Ok(())
 
 
 }
 
 ///根据区域代码分类
-pub fn classify_by_region(file_path: &Path) -> Result<(), Box<dyn Error>> {
+pub async fn classify_by_region(file_path: &str) -> Result<(), Box<dyn Error>> {
     let file = File::open(file_path)?; // 打开指定路径的文件
     let reader = BufReader::new(file);
     //读取文件内容
@@ -312,7 +234,7 @@ pub fn classify_by_region(file_path: &Path) -> Result<(), Box<dyn Error>> {
 
     // 将每个区域的行写入不同的文件
     for (region_code, lines) in region_map {
-        let output_file_path = format!("{}/sort/output_{}.txt", file_path.parent().unwrap().display(),region_code); // 根据区域代码生成输出文件名
+        let output_file_path = format!("{}/sort/output_{}.txt", Path::new(file_path).parent().unwrap().display(),region_code); // 根据区域代码生成输出文件名
         let output_file = File::create(&output_file_path)?;
         let mut writer = BufWriter::new(output_file);
 
@@ -326,39 +248,50 @@ pub fn classify_by_region(file_path: &Path) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-///格式化一个文件将空格或多个空格转换为逗号
-pub fn format_space_to_comma(file_path: &Path) -> Result<(), Box<dyn Error>> {
+///读取文件，写入数据库,ip,port,region,是需要读取的表格的列
+pub async fn read_file_and_write_to_db(file_path: &str, conn: &Connection, ip_index: usize, port_index: usize, region_index: usize) -> Result<(), Box<dyn Error>> {
     let file = File::open(file_path)?; // 打开指定路径的文件
     let reader = BufReader::new(file);
     let lines = reader.lines();
 
-    let mut formatted_lines = Vec::new(); // 用于存储格式化后的行
-
-    // 逐行读取文件
     for line in lines {
         match line {
             Ok(content) => {
-                // 使用正则表达式将空格或制表符替换为逗号
-                let re = Regex::new(r"\s+").unwrap(); // 匹配一个或多个空白字符
-                let formatted_line = re.replace_all(&content, ",").to_string();
-                formatted_lines.push(formatted_line); // 保存格式化后的行
+                // 假设每行的格式为以逗号分隔的值
+                let parts: Vec<&str> = content.split(',').collect();
+                
+                // 确保索引在有效范围内
+                if parts.len() > region_index {
+                    let ip = parts[ip_index-1].to_string();
+                    // 去除小数点并解析端口
+                    let port_str = if parts[port_index-1].is_empty() { 
+                        "0".to_string() // 输出0
+                    } else { 
+                        parts[port_index-1].replace('.', "") // 去除小数点
+                    }; 
+                    let port: u16 = port_str.parse().map_err(|_| "端口解析失败")?;
+                    let region = parts[region_index-1].to_string();
+                    //如果区域为空，则设置为None
+                    let region = if region.is_empty() { Some("未知") } else { Some(region.as_str()) };
+                    
+                    // 创建 ConnectionData 结构体
+                    let connection_data = ConnectionData {
+                        ip,
+                        port,
+                        region: region.map(|r| r.to_string()),
+                        is_connected: Some(true), 
+                        is_high_speed: Some(false), 
+                    };
+
+                    // 插入数据到数据库
+                    insert_connection(conn, &connection_data)?;
+                } else {
+                    println!("行格式不正确: {:?}", content); // 打印格式不正确的行
+                }
             }
-            Err(e) => println!("读取行时出错: {}", e), // 处理读取错误
+            Err(e) => println!("读取行时出错: {}", e),
         }
     }
 
-    // 将格式化后的行写回文件
-    let output_file = OpenOptions::new()
-        .write(true)
-        .truncate(true) // 清空文件内容
-        .open(file_path)?; // 使用传入的 file_path
-    let mut writer = BufWriter::new(output_file);
-
-    // 写入格式化后的行
-    for line in formatted_lines {
-        writeln!(writer, "{}", line)?; 
-    }
-
-    writer.flush()?; // 确保所有数据都被写入
     Ok(())
 }

@@ -4,16 +4,15 @@ mod ip;
 use sort::sort_array_file::*;
 use ip::move_file::*;
 use ip::unique_ip::*;
-use std::path::Path;
-fn main() {
-    //move_file().unwrap();
-    //let _ =unique_ip("D:\\Download\\IP\\type02_IP");
-    //check_txt_file(Path::new("D:\\Download\\IP\\type02_IP\\output\\unique_ip.txt")).unwrap();
-    //fill_data(Path::new("D:\\Download\\IP\\type02_IP\\output\\unique_ip.txt")).unwrap();
-    //fill_data_nard(Path::new("D:\\Download\\IP\\type02_IP\\output\\unique_ip.txt")).unwrap();
-    //let _ = unique_ip("D:\\Download\\IP\\type01_IP");
-    //classify_by_region(Path::new("D:\\Download\\IP\\type01_IP\\output\\unique_ip.txt")).unwrap();
-    //format_space_to_comma(Path::new("D:\\Download\\IP\\type01_IP\\output\\sort\\output_HKG.txt")).unwrap();
+use ip::ip_data::*;
+use rusqlite::Connection;
+
+use tokio;
+#[tokio::main]
+async fn main() {
+    let conn = Connection::open("E:\\Projects\\RustProjects\\Example\\Practice01\\src\\resources\\ip_data.db").expect("无法打开数据库");
+    //创建表
+    create_table(&conn).expect("无法创建表");
     loop {
         println!("请选择功能:");
         println!("1: (练习)排序数组");
@@ -46,34 +45,31 @@ fn main() {
             }
             2 => {
                 println!("请将文件放置在D:/Download/IP/type01_IP中");
-                move_file().unwrap();
+                move_file().await.unwrap();
             }
             3 => {
-                //处理文件夹下所有文件，输出到output文件夹，得到唯一IP
-                let _ = unique_ip("D:\\Download\\IP\\type02_IP");
+                 // 处理文件夹下所有文件，输出到output文件夹，得到唯一IP
+                if let Err(e) = unique_ip("D:\\Download\\IP\\type02_IP").await {
+                    println!("处理唯一IP时出错: {}", e);
+                }
             }
             4 => {
-                // 调用检查文本文件的函数
-                let _ = check_txt_file("D:\\Download\\IP\\type02_IP\\output\\unique_ip.txt");
+                let _ = check_txt_file("D:\\Download\\IP\\type02_IP\\output\\unique_ip.txt").await;
             }
             5 => {
-                // 调用填充数据的函数
-                // fill_data(Path::new("D:\\Download\\IP\\type02_IP\\output\\unique_ip.txt")).unwrap();
-                println!("填充数据的功能尚未实现。");
+                let _ = fill_data("D:\\Download\\IP\\type02_IP\\output\\unique_ip.txt").await;
             }
             6 => {
                 // 调用分类区域的函数
-                // classify_by_region(Path::new("D:\\Download\\IP\\type01_IP\\output\\unique_ip.txt")).unwrap();
-                println!("分类区域的功能尚未实现。");
+                let _ = classify_by_region("D:\\Download\\IP\\type01_IP\\output\\unique_ip.txt").await.unwrap();
             }
             7 => {
-                // 调用格式化文件的函数
-                // format_space_to_comma(Path::new("D:\\Download\\IP\\type01_IP\\output\\sort\\output_HKG.txt")).unwrap();
-                println!("格式化文件的功能尚未实现。");
+                // 写入数据库
+                let _ = read_file_and_write_to_db("D:\\Download\\IP\\test.txt", &conn, 1, 2, 5).await.unwrap();
             }
             0 => {
                 println!("退出程序。");
-                break; // 退出循环
+                break; 
             }
             _ => {
                 println!("无效选择，请输入有效的数字。");
