@@ -38,4 +38,11 @@ pub fn insert_connection(conn: &Connection, data: &ConnectionData) -> Result<()>
 }
 
 
-// 其他与数据库交互的函数可以在这里添加
+/// 更新数据库中的is_connected
+pub fn update_connection(conn: &Connection, ip: &str, port: u16, is_connected: bool) -> Result<()> {
+    conn.execute(
+        "UPDATE connections SET is_connected = ?1 WHERE ip = ?2 AND port = ?3",
+        params![is_connected, ip, port],
+    )?;
+    Ok(())
+}

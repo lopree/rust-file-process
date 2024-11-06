@@ -22,6 +22,8 @@ async fn main() {
         println!("5: 填充数据");
         println!("6: 分类区域");
         println!("7: 格式化文件");
+        println!("8: 根据文件中的链接，修改是否可链接");
+        println!("9: 从数据库中提取指定行数的地址");
         println!("0: 退出");
 
         let mut input = String::new();
@@ -68,8 +70,11 @@ async fn main() {
                 let _ = read_file_and_write_to_db("D:\\Download\\IP\\type02_IP\\output\\aaa.txt", &conn, 1, 2, 4).await.unwrap();
             }
             8=>{
-                //提取文件中的无效地址，从数据库中删除
-                
+                //提取文件中的有效地址，修改数据库中的是否可连接为真
+                let _ = get_ip_port_from_links("D:\\Download\\IP\\output\\used.txt", &conn).await.unwrap();
+            }
+            9=>{
+                let _ = get_links_from_db(&conn, 62).await.unwrap();
             }
             0 => {
                 println!("退出程序。");

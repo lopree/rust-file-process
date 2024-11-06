@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use crate::ip::region_code::get_region_name;
 use crate::ip::move_file::get_csv_files;
 use rusqlite::{Connection, params};
-use crate::ip::ip_data::{ConnectionData, insert_connection};
+use crate::ip::ip_data::*;
 ///telegram 获得的文件,去除重复ip
 pub async fn unique_ip(file_path: &str) -> Result<(), Box<dyn Error>> {
     // 读取文件夹下的所有csv文件,忽略子文件夹
@@ -313,4 +313,80 @@ async fn check_ip_port_exists(conn: &Connection, ip: &str, port: u16) -> Result<
     let mut stmt = conn.prepare("SELECT COUNT(*) FROM connections WHERE ip = ? AND port = ?")?;
     let count: i64 = stmt.query_row(params![ip, port], |row| row.get(0))?;
     Ok(count > 0)
+}
+
+
+//读取vless链接获得ip和port
+pub async fn get_ip_port_from_links(file_path: &str, conn: &Connection) -> Result<(), Box<dyn Error>> {
+    // 定义正则表达式
+    let re = Regex::new(r"@([^:]+):(\d+)\?").unwrap();
+    let file = File::open(file_path)?; // 打开指定路径的文件
+    let reader = BufReader::new(file);
+    let lines = reader.lines();
+    for line in lines {
+        match line {
+            Ok(content) => {
+                // 使用正则表达式进行匹配
+                if let Some(captures) = re.captures(&content) {
+                    let ip = captures.get(1).map_or("", |m| m.as_str()); // 提取 IP 地址
+                    let port = captures.get(2).map_or("", |m| m.as_str()); // 提取端口
+                    //数据库中查找该ip和port是否存在
+                    let exists = check_ip_port_exists(conn, ip, port.parse().unwrap()).await?;
+                    if exists {
+                        //修改数据库中的is_connected为false
+                        update_connection(conn, ip, port.parse().unwrap(), true)?;
+                        continue; 
+                    }
+                } else {
+                    println!("未能从行中提取 IP 和 Port: {}", content);
+                }
+            }
+            Err(e) => println!("读取行时出错: {}", e),
+        }
+    }
+    
+    Ok(())
+}
+
+///获取数据库指定行数的数据，并转换成链接
+pub async fn get_links_from_db(conn: &Connection, row_count: usize) -> Result<(), Box<dyn Error>> {
+    let mut formatted_lines = Vec::new();
+    let uuid = "43ee9711-f9e6-47ba-aba8-ea179eb6ada3";
+    // 定义国家代码数组
+    let countries = ["KR", "JP", "SG", "HK"];
+    let mut stmt = conn.prepare("SELECT ip, port, region FROM connections LIMIT ?")?; // 添加 region 列
+    let rows = stmt.query_map(params![row_count], |row| {
+        let ip: String = row.get(0)?; // 获取 IP
+        let port: u16 = row.get(1)?; // 获取 Port
+        let region: String = row.get(2)?; // 获取 Region
+        Ok((ip, port, region)) // 返回 IP, Port 和 Region
+    })?;
+    for row in rows {
+        match row {
+            Ok((ip_address, port, region)) => {
+                // 随机选择国家代码（如果需要）
+                let mut rng = thread_rng();
+                let country = countries.choose(&mut rng).unwrap(); // 随机选择一个国家代码
+
+                // 格式化为指定字符串
+                let formatted_line = format!(
+                    "vless://{}@{}:{}?encryption=none&security=tls&sni=img.rookstein.filegear-sg.me&fp=random&type=ws&host=img.rookstein.filegear-sg.me&path=%2Fpyip%3D%5BProxyIP.{}.fxxk.dedyn.io%5D%3A443#{}",
+                    uuid, ip_address, port, country, region 
+                );
+
+                formatted_lines.push(formatted_line);
+                
+            }
+            Err(e) => {
+                println!("读取行时出错: {}", e);
+            }
+        }
+    }
+    //将formatted_lines写入文件
+    let output_file_path = String::from("D:\\Download\\IP\\output\\links.txt");
+    let mut file = File::create(&output_file_path)?;
+    for line in formatted_lines {
+        writeln!(file, "{}", line)?; 
+    }
+    Ok(())
 }
