@@ -6,7 +6,7 @@ use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC}; // 导入 URL 编
 use std::collections::HashMap;
 use crate::ip::region_code::get_region_name;
 use crate::ip::move_file::get_csv_files;
-use rusqlite::Connection;
+use rusqlite::{Connection, params};
 use crate::ip::ip_data::{ConnectionData, insert_connection};
 ///telegram 获得的文件,去除重复ip
 pub async fn unique_ip(file_path: &str) -> Result<(), Box<dyn Error>> {
@@ -267,13 +267,25 @@ pub async fn read_file_and_write_to_db(file_path: &str, conn: &Connection, ip_in
                     let port_str = if parts[port_index-1].is_empty() { 
                         "0".to_string() // 输出0
                     } else { 
-                        parts[port_index-1].replace('.', "") // 去除小数点
+                        //parts[port_index-1].replace('.', "") // 去除小数点
+                        if parts[port_index-1].find('.').is_some() {
+                            let pos = parts[port_index-1].find('.').unwrap(); // 获取点的位置
+                            parts[port_index-1][..pos].to_string() // 取出点之前的部分
+                        } else {
+                            parts[port_index-1].to_string() // 没有点则直接使用
+                        }
                     }; 
                     let port: u16 = port_str.parse().map_err(|_| "端口解析失败")?;
                     let region = parts[region_index-1].to_string();
                     //如果区域为空，则设置为None
                     let region = if region.is_empty() { Some("未知") } else { Some(region.as_str()) };
-                    
+                    // 检查数据库中是否已存在相同的 IP 和端口
+                    let exists = check_ip_port_exists(conn, &ip, port).await?;
+                    if exists {
+                        println!("IP: {} 和端口: {} 已存在，跳过插入", ip, port);
+                        continue; // 跳过插入
+                    }
+
                     // 创建 ConnectionData 结构体
                     let connection_data = ConnectionData {
                         ip,
@@ -294,4 +306,11 @@ pub async fn read_file_and_write_to_db(file_path: &str, conn: &Connection, ip_in
     }
 
     Ok(())
+}
+
+/// 检查数据库中是否存在相同的 IP 和端口
+async fn check_ip_port_exists(conn: &Connection, ip: &str, port: u16) -> Result<bool, Box<dyn Error>> {
+    let mut stmt = conn.prepare("SELECT COUNT(*) FROM connections WHERE ip = ? AND port = ?")?;
+    let count: i64 = stmt.query_row(params![ip, port], |row| row.get(0))?;
+    Ok(count > 0)
 }

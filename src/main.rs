@@ -65,7 +65,11 @@ async fn main() {
             }
             7 => {
                 // 写入数据库
-                let _ = read_file_and_write_to_db("D:\\Download\\IP\\test.txt", &conn, 1, 2, 5).await.unwrap();
+                let _ = read_file_and_write_to_db("D:\\Download\\IP\\type02_IP\\output\\aaa.txt", &conn, 1, 2, 4).await.unwrap();
+            }
+            8=>{
+                //提取文件中的无效地址，从数据库中删除
+                
             }
             0 => {
                 println!("退出程序。");
