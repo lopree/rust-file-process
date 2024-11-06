@@ -1,15 +1,15 @@
-use std::{collections::HashSet, error::Error, fs::{self, File, OpenOptions}, io::{BufRead,BufReader, Write,BufWriter}, path::{PathBuf, Path}};
-use glob::glob;
-use csv::ReaderBuilder;
-use chrono::Local;
+use std::{collections::HashSet, error::Error, fs::{File, OpenOptions}, io::{BufRead,BufReader, Write,BufWriter}, path::{PathBuf, Path}};
+
 use rand::seq::SliceRandom; // 导入 SliceRandom trait
 use rand::thread_rng; // 导入 thread_rng
 use regex::Regex;
 use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC}; // 导入 URL 编码功能
 use std::collections::HashMap;
+use crate::ip::region_code::get_region_name;
+use crate::ip::move_file::get_csv_files;
 ///telegram 获得的文件,去除重复ip
 pub fn unique_ip(file_path: &str) -> Result<(), Box<dyn Error>> {
-    // 读取特定文件夹下的所有csv文件,忽略特定文件夹
+    // 读取文件夹下的所有csv文件,忽略子文件夹
     let files = get_csv_files(file_path.as_ref(),true);
     //遍历所有文件，将内容聚合到一起
     let mut ip_list = HashSet::new();
@@ -31,7 +31,6 @@ pub fn unique_ip(file_path: &str) -> Result<(), Box<dyn Error>> {
                 Err(e) => println!("读取文件 {:?} 时出错: {}", file, e),
             }
         }
-        
     }
     println!("所有地址数量: {}", all_lines.len());
     // 根据all_lines中的ip地址，提取ip，对重复ip的lines，只保留一个
@@ -74,112 +73,8 @@ pub fn unique_ip(file_path: &str) -> Result<(), Box<dyn Error>> {
     
     Ok(())
 }
-pub fn move_file() -> Result<(), Box<dyn Error>> {
-    let dir_path = Path::new("D:\\Download\\IP\\type01_IP"); // 替换为实际文件夹路径
-    let target_dir = Path::new("D:\\Download\\IP\\type02_IP"); // 替换为目标文件夹路径
-    let ignore_subfolders = false; // true: 只获取当前文件夹的 CSV，false: 包括所有子文件夹
-
-    // 确保目标文件夹存在
-    fs::create_dir_all(target_dir)?;
-
-    let csv_files = get_csv_files(dir_path, ignore_subfolders);
-    let mut index = 1;
-
-    for file in csv_files {
-        if target_csv_file(&file)? {
-            move_and_rename_file(&file, target_dir, index)?;
-            index += 1;
-        }
-    }
-
-    Ok(())
-}
-
-///文件分类，将第二列是tls的文件移动到指定文件夹
-fn move_and_rename_file(file_path: &Path, target_dir: &Path, mut index: usize) -> Result<(), Box<dyn Error>> {
-    // 获取当前日期
-    let date = Local::now().format("%Y%m%d").to_string();
-
-    loop {
-        let new_file_name = format!("{}_{}.csv", date, index);
-        let target_path = target_dir.join(&new_file_name);
-
-        // 检查目标路径是否已存在文件
-        if !target_path.exists() {
-            fs::rename(file_path, &target_path)?;
-            println!("文件 {:?} 已移动并重命名为 {:?}", file_path, target_path);
-            break;
-        }
-
-        // 如果文件已存在，index + 1 尝试下一个名称
-        index += 1;
-    }
-
-    Ok(())
-}
-
-fn get_csv_files(dir_path: &Path, ignore_subfolders: bool) -> Vec<PathBuf> {
-    let mut csv_files = Vec::new();
-
-    if ignore_subfolders {
-        // 仅在指定文件夹中查找 CSV 文件
-        if let Ok(entries) = fs::read_dir(dir_path) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.is_file() && path.extension().and_then(|ext| ext.to_str()) == Some("csv") {
-                    csv_files.push(path);
-                }
-            }
-        }
-    } else {
-        // 递归查找所有子文件夹中的 CSV 文件
-        let pattern = format!("{}/**/*.csv", dir_path.display());
-        for entry in glob(&pattern).expect("Failed to read glob pattern") {
-            if let Ok(path) = entry {
-                csv_files.push(path);
-            }
-        }
-    }
-
-    csv_files
-}
-
-/// 检查 CSV 文件的第一行第三列是否为 "TLS"。
-fn target_csv_file(file_path: &Path) -> Result<bool, Box<dyn Error>> {
-    let file = File::open(file_path)?;
-    let reader = BufReader::new(file);
-    let mut csv_reader = ReaderBuilder::new()
-        .has_headers(false)
-        .flexible(true) // 允许缺少列
-        .from_reader(reader);
-
-    // 读取第二行记录
-    let mut records = csv_reader.records();
-    // 跳过第一行
-    records.next(); // 忽略第一行
-
-    match records.next() {
-        Some(Ok(record)) => {
-            // 检查第二行第三列是否为数字
-            if let Some(third_column) = record.get(2) {
-                // 尝试将第三列转换为数字
-                if third_column.parse::<f64>().is_err() {
-                    return Ok(true); // 如果转换失败，返回true
-                }
-            }
-            Ok(false) // 如果是数字，返回false
-        }
-        Some(Err(_)) => {
-            // 如果读取或解码出错，打印警告信息并返回 false
-            println!("警告：文件 {:?} 不是有效的 UTF-8 编码，跳过该文件。", file_path);
-            Ok(false)
-        }
-        None => Ok(false), // 如果文件为空或没有记录，返回 false
-    }
-}
-
-//暴力删除标题栏
-pub fn check_txt_file(file_path: &Path) -> Result<(), Box<dyn Error>> { 
+///保留第一行的标题栏，删除多余的标题
+pub fn check_txt_file(file_path: &str) -> Result<(), Box<dyn Error>> { 
     let file = File::open(file_path)?; // 打开指定路径的文件
     let reader = BufReader::new(file);
     
@@ -191,7 +86,7 @@ pub fn check_txt_file(file_path: &Path) -> Result<(), Box<dyn Error>> {
     let re = Regex::new(r"[\u4e00-\u9fa5]$").unwrap(); // 匹配汉字
 
     // 逐行读取文件
-    for line in reader.lines() {
+    for line in reader.lines().skip(1) {
         match line {
             Ok(content) => {
                 line_count += 1;
@@ -239,33 +134,6 @@ pub fn fill_data(file_path: &Path) -> Result<(), Box<dyn Error>> {
     let mut line_count = 0;
     // 定义国家代码数组
     let countries = ["KR", "JP", "SG", "HK"];
-    // 定义地区缩写到中文的映射
-    let region_map = [
-        ("SJC", "美国圣何塞"),
-        ("ARN", "瑞典阿尔斯塔"),
-        ("IAD", "美国华盛顿"),
-        ("SEA", "美国西雅图"),
-        ("NRT", "日本成田"),
-        ("LHR", "英国伦敦"),
-        ("BOM", "印度孟买"),
-        ("ORD", "美国芝加哥"),
-        ("YUL", "加拿大蒙特利尔"),
-        ("YYZ", "加拿大多伦多"),
-        ("ZRH", "瑞士苏黎世"),
-        ("SIN", "新加坡"),
-        ("SYD", "澳大利亚悉尼"),
-        ("HKG", "中国香港"),
-        ("TYO", "日本东京"),
-        ("ICN", "韩国仁川"),
-        ("KUL", "马来西亚吉隆坡"),
-        ("MXP", "意大利米兰"),
-        ("FRA", "德国法兰克福"),
-        ("AMS", "荷兰阿姆斯特丹"),
-        ("LAX", "美国洛杉矶"),
-        ("IAD", "美国华盛顿"),
-        ("GRU", "巴西圣保罗"),
-        ("CDG", "法国巴黎"),
-    ].iter().cloned().collect::<std::collections::HashMap<_, _>>();
 
     // 逐行读取文件
     for line in reader.lines() {
@@ -283,10 +151,10 @@ pub fn fill_data(file_path: &Path) -> Result<(), Box<dyn Error>> {
                      let country = countries.choose(&mut rng).unwrap(); // 随机选择一个国家代码
                     let fourth_column = parts[3]; // 第四列
                      // 将地区缩写转换为中文
-                     let region_name = region_map.get(fourth_column).unwrap_or(&"未知").to_string();
+                     let region_name = get_region_name(fourth_column);
 
                      // 将中文进行 URL 编码
-                     let encoded_region_name = utf8_percent_encode(&region_name, NON_ALPHANUMERIC).to_string();
+                     let encoded_region_name = utf8_percent_encode(&region_name.unwrap(), NON_ALPHANUMERIC).to_string();
                     
 
                     // 格式化为指定字符串
