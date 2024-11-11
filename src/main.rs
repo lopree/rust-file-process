@@ -13,8 +13,10 @@ async fn main() {
     loop {
         println!("请选择功能:");
         println!("1: 清空数据库");
-        println!("2: 读取文件类型（区域在第4行）");
-        println!("3: 读取文件类型（区域在第3行）");
+        println!("2: 读取文件类型（区域在第3行）");
+        println!("3: 读取文件类型（区域在第4行）");
+        println!("0: 退出程序");
+
 
         let mut input = String::new();
         print!("请输入你的选择: ");
@@ -35,17 +37,18 @@ async fn main() {
                 clear_database(&conn).expect("Failed to clear database");
             }
             2 => {
-                match unique_ip(file01_path, &conn,4).await {
-                    Ok(_) => println!("Unique IP processed successfully."),
-                    Err(e) => println!("Error processing unique IP: {}", e),
-                }
-            }
-            3 => {
                 match unique_ip(file02_path, &conn,3).await {
                     Ok(_) => println!("Unique IP processed successfully."),
                     Err(e) => println!("Error processing unique IP: {}", e),
                 }
             }
+            3 => {
+                match unique_ip(file01_path, &conn,4).await {
+                    Ok(_) => println!("Unique IP processed successfully."),
+                    Err(e) => println!("Error processing unique IP: {}", e),
+                }
+            }
+
             0 => {
                 println!("退出程序。");
                 break; 
