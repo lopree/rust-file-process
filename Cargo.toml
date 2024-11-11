@@ -1,0 +1,9 @@
+[package]
+name = "file-process"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+regex = "1.11.0"
+rusqlite = "0.32.1"
+tokio = { version = "1.35.0", features = ["full"] }
