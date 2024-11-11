@@ -2,7 +2,7 @@ use rusqlite::Connection;
 use std::io::{self,Write};
 mod file_process; 
 use file_process::ip_data::*;
-use file_process::process::unique_ip;
+use file_process::process::*;
 
 #[tokio::main] // 使用 tokio 作为异步运行时
 async fn main() {
@@ -15,6 +15,7 @@ async fn main() {
         println!("1: 清空数据库");
         println!("2: 读取文件类型（区域在第3行）");
         println!("3: 读取文件类型（区域在第4行）");
+        println!("4: 读取无法链接的地址");
         println!("0: 退出程序");
 
 
@@ -48,7 +49,9 @@ async fn main() {
                     Err(e) => println!("Error processing unique IP: {}", e),
                 }
             }
-
+            4 => {
+                let _ = change_can_connected("./assets/ips/link.txt").await.unwrap();
+            }
             0 => {
                 println!("退出程序。");
                 break; 

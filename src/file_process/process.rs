@@ -1,4 +1,7 @@
 ﻿use regex::Regex;
+use base64::{Engine as _, engine::general_purpose};
+use url::Url;
+use percent_encoding::percent_decode_str;
 use rusqlite::Connection;
 use std::net::IpAddr;
 use std::str::FromStr;
@@ -98,4 +101,66 @@ fn get_files(file_path :&str) ->Result<Vec<PathBuf>,Error> {
         }
     }
     Ok(files)
+}
+
+///读取文件，修改数据库中的是否链接数据
+pub async fn change_can_connected(file_path : &str)->Result<(), Error>{
+    if let Ok(file) = File::open(file_path) {
+        for line in BufReader::new(file).lines() {
+            if let Ok(link) = line {
+                if link.starts_with("vless://") {
+                    // 移除 "vless://" 前缀
+                    let without_prefix = link.trim_start_matches("vless://");
+                    
+                    // 分割基本链接和参数
+                    let parts: Vec<&str> = without_prefix.split('?').collect();
+                    if parts.is_empty() {
+                        continue;
+                    }
+
+                    let base_part = parts[0];
+                    // 尝试判断是否是 Base64 编码
+                    let connection_info = if base_part.contains('@') {
+                        // 直接格式：uuid@ip:port
+                        base_part.to_string()
+                    } else {
+                        // Base64 编码格式
+                        match general_purpose::STANDARD.decode(base_part) {
+                            Ok(decoded) => String::from_utf8(decoded).unwrap_or_default(),
+                            Err(_) => continue,
+                        }
+                    };
+                    // 解析基本连接信息
+                    let re = Regex::new(r"(?:(.+?):)?(.+?)@([\d.]+):(\d+)").unwrap();
+                    if let Some(caps) = re.captures(&connection_info) {
+                        let ip = caps.get(3).map_or("", |m| m.as_str());
+                        let port = caps.get(4).map_or("", |m| m.as_str());
+
+                        // 解析查询参数
+                        if parts.len() > 1 {
+                            let query = format!("http://dummy.com?{}", parts[1]);
+                            if let Ok(parsed_url) = Url::parse(&query) {
+                                let remarks = if let Some(fragment) = parsed_url.fragment() {
+                                    // URL decode the fragment (remarks)
+                                    percent_decode_str(fragment)
+                                        .decode_utf8()
+                                        .unwrap_or_default()
+                                        .to_string()
+                                } else {
+                                    parsed_url.query_pairs()
+                                        .find(|(key, _)| key == "remarks")
+                                        .map(|(_, value)| value.to_string())
+                                        .unwrap_or_default()
+                                };
+
+
+                                println!("IP: {}, Port: {}, Remarks: {}",ip, port, remarks);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
 }

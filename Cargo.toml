@@ -7,3 +7,6 @@ edition = "2021"
 regex = "1.11.0"
 rusqlite = "0.32.1"
 tokio = { version = "1.35.0", features = ["full"] }
+base64 = "0.21.0"
+url = "2.4.0"
+percent-encoding = "2.3.0"
