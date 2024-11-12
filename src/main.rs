@@ -6,6 +6,10 @@ use file_process::process::*;
 
 #[tokio::main] // 使用 tokio 作为异步运行时
 async fn main() {
+    let all_constant = const_value().unwrap();
+    let uuid = all_constant.first().unwrap();
+    let fake_addr = all_constant.get(1).unwrap();
+    println!("{},{}", uuid ,fake_addr);
     let file01_path = "./assets/ips/type01"; 
     let file02_path = "./assets/ips/type02"; 
     let conn = Connection::open("./assets/database.db").expect("Failed to open database");

@@ -1,7 +1,5 @@
 ﻿use regex::Regex;
 use base64::{Engine as _, engine::general_purpose};
-use url::Url;
-use percent_encoding::percent_decode_str;
 use rusqlite::Connection;
 use std::net::IpAddr;
 use std::str::FromStr;
@@ -11,6 +9,20 @@ use std::collections::HashSet;
 use std::fs;
 use std::fs::File;
 use crate::file_process::ip_data::{ConnectionData, insert_connection,change_connected};
+///读取文件中的uuid，以及假地址
+pub fn const_value()->Result<Vec<String>,Error>{
+    let mut all_content = Vec::new();
+    let file = File::open("./assets/ips/value.txt")?;
+    let reader = BufReader::new(file);
+    let lines = reader.lines();
+    for line in lines{
+        match line {
+            Ok(content) => all_content.push(content),
+            Err(e) => println!("读取时出错：{}",  e),
+        }
+    }
+    Ok(all_content)
+}
 pub async fn unique_ip(file_path : &str,conn : &Connection,region_index : usize) ->Result<(),Error> {
     let mut all_lines = Vec::new();
     let mut ip_list = HashSet::new();
@@ -135,31 +147,27 @@ pub async fn change_can_connected(file_path : &str,conn : &Connection)->Result<(
                     if let Some(caps) = re.captures(&connection_info) {
                         let ip = caps.get(3).map_or("", |m| m.as_str());
                         let port = caps.get(4).map_or("", |m| m.as_str());
-
-                        // 解析查询参数
-                        if parts.len() > 1 {
-                            let query = format!("http://dummy.com?{}", parts[1]);
-                            if let Ok(parsed_url) = Url::parse(&query) {
-                                let remarks = if let Some(fragment) = parsed_url.fragment() {
-                                    // URL decode the fragment (remarks)
-                                    percent_decode_str(fragment)
-                                        .decode_utf8()
-                                        .unwrap_or_default()
-                                        .to_string()
-                                } else {
-                                    parsed_url.query_pairs()
-                                        .find(|(key, _)| key == "remarks")
-                                        .map(|(_, value)| value.to_string())
-                                        .unwrap_or_default()
-                                };
-
-                                change_connected(conn, ip, port.parse().unwrap_or(0), true)?;
-                            }
-                        }
+                        change_connected(conn, ip, port.parse().unwrap_or(0), true)?;
                     }
                 }
             }
         }
     }
     Ok(())
+}
+///从数据库中获取链接
+pub async fn get_links_from_data()->(){
+
+}
+
+///按照指定格式输出链接
+pub fn target_links (ip : &str , port : u16,region_code : &str,uuid: &str,fake_addr : &str) -> String{
+    // 构造反代地址
+    let reverse_proxy_address = format!("ProxyIP.{}.fxxk.dedyn.io", region_code);
+
+    // 构造 VLESS 链接
+    format!(
+        "vless://{}@{}:{}?encryption=none&security=tls&sni={}&fp=random&type=ws&host={}&path=%2Fpyip%3D%5B{}%5D%3A443#{}",
+        uuid, ip, port, fake_addr, fake_addr, reverse_proxy_address, region_code
+    )
 }

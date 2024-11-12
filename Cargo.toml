@@ -8,5 +8,3 @@ regex = "1.11.0"
 rusqlite = { version = "0.32.1", features = ["bundled"] }
 tokio = { version = "1.41.0", features = ["full"] }
 base64 = "0.22.1"
-url = "2.5.3"
-percent-encoding = "2.3.1"
