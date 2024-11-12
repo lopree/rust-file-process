@@ -46,3 +46,9 @@ pub fn clear_database(conn: &Connection) -> Result<(),rusqlite::Error> {
     Ok(())
 }
 
+/// 改变可连接的布尔值
+pub fn change_connected(conn: &Connection, ip: &str, port: u16, can_connected: bool) -> Result<(),rusqlite::Error> {
+    conn.execute("UPDATE connections SET can_connected = ?1 WHERE ip = ?2 AND port = ?3", params![can_connected, ip, port])?;
+    Ok(())
+}
+

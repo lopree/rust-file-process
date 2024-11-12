@@ -15,7 +15,7 @@ async fn main() {
         println!("1: 清空数据库");
         println!("2: 读取文件类型（区域在第3行）");
         println!("3: 读取文件类型（区域在第4行）");
-        println!("4: 读取无法链接的地址");
+        println!("4: 更新可连接状态");
         println!("0: 退出程序");
 
 
@@ -50,7 +50,7 @@ async fn main() {
                 }
             }
             4 => {
-                let _ = change_can_connected("./assets/ips/link.txt").await.unwrap();
+                let _ = change_can_connected("./assets/ips/link.txt",&conn).await.unwrap();
             }
             0 => {
                 println!("退出程序。");

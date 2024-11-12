@@ -10,7 +10,7 @@ use std::path::{Path,PathBuf};
 use std::collections::HashSet;
 use std::fs;
 use std::fs::File;
-use crate::file_process::ip_data::{ConnectionData, insert_connection};
+use crate::file_process::ip_data::{ConnectionData, insert_connection,change_connected};
 pub async fn unique_ip(file_path : &str,conn : &Connection,region_index : usize) ->Result<(),Error> {
     let mut all_lines = Vec::new();
     let mut ip_list = HashSet::new();
@@ -104,7 +104,7 @@ fn get_files(file_path :&str) ->Result<Vec<PathBuf>,Error> {
 }
 
 ///读取文件，修改数据库中的是否链接数据
-pub async fn change_can_connected(file_path : &str)->Result<(), Error>{
+pub async fn change_can_connected(file_path : &str,conn : &Connection)->Result<(), Box<dyn std::error::Error>>{
     if let Ok(file) = File::open(file_path) {
         for line in BufReader::new(file).lines() {
             if let Ok(link) = line {
@@ -153,8 +153,7 @@ pub async fn change_can_connected(file_path : &str)->Result<(), Error>{
                                         .unwrap_or_default()
                                 };
 
-
-                                println!("IP: {}, Port: {}, Remarks: {}",ip, port, remarks);
+                                change_connected(conn, ip, port.parse().unwrap_or(0), true)?;
                             }
                         }
                     }
