@@ -3,16 +3,28 @@ use base64::{Engine as _, engine::general_purpose};
 use rusqlite::Connection;
 use std::net::IpAddr;
 use std::str::FromStr;
-use std::io::{BufReader,Error,BufRead};
+use std::io::{BufReader,Error,BufRead,Write,BufWriter};
 use std::path::{Path,PathBuf};
 use std::collections::HashSet;
 use std::fs;
 use std::fs::File;
+use rand::Rng;
 use crate::file_process::ip_data::{ConnectionData, insert_connection,change_connected};
 ///读取文件中的uuid，以及假地址
 pub fn const_value()->Result<Vec<String>,Error>{
     let mut all_content = Vec::new();
-    let file = File::open("./assets/ips/value.txt")?;
+    // 尝试打开文件
+    let file = match File::open("./assets/ips/value.txt") {
+        Ok(file) => file,
+        Err(e) => {
+            // 输出错误信息，包括错误的详细信息
+            println!("无法打开文件，错误信息: {}",  e);
+            // 提示用户文件无法打开，但继续执行
+            println!("请检查文件路径或权限。");
+            // 返回空的 Vec 而不是退出
+            return Ok(all_content);
+        }
+    };
     let reader = BufReader::new(file);
     let lines = reader.lines();
     for line in lines{
@@ -156,18 +168,46 @@ pub async fn change_can_connected(file_path : &str,conn : &Connection)->Result<(
     Ok(())
 }
 ///从数据库中获取链接
-pub async fn get_links_from_data()->(){
+pub async fn get_links_from_data(uuid : &str,fake_addr : &str)->Result<(), rusqlite::Error>{
+   // 从数据库中获取500个ip，port，以及region_code
+   let conn = Connection::open("./assets/database.db")?;
+   //let mut stmt = conn.prepare("SELECT ip, port, region FROM connections ORDER BY RANDOM() LIMIT 2")?;
+   let mut stmt = conn.prepare("SELECT ip, port, region FROM connections")?; // 获取所有记录
+   let ip_iter = stmt.query_map([], |row| {
+    let ip: String = row.get(0)?;
+    let port: u16 = row.get(1)?;
+    let region_code: String = row.get(2)?;
+    Ok((ip, port, region_code)) // 返回一个元组
+})?; // 使用 query_map 方法
+    let file = File::create("./assets/ips/output_links.txt").unwrap();
+    //使用 BufWriter 包装文件,防止格式写入错误
+    let mut writer = BufWriter::new(file);
+    for result in ip_iter {
+        let (ip, port, region_code) = result?; // 解构元组
+        // 这里可以处理获取到的 ip, port 和 region_code
+        let link = target_links(&ip,port,&region_code,uuid,fake_addr);
+        //写入文件
+        writer.write_all(format!("{}\n", link).as_bytes()).unwrap(); // 添加换行符
+    }
+   Ok(()) // 返回 Ok
 
 }
 
 ///按照指定格式输出链接
 pub fn target_links (ip : &str , port : u16,region_code : &str,uuid: &str,fake_addr : &str) -> String{
+    //随机一个地区
+    let proxy_region = vec!["KR","HK","SG","JP","US"];
+    let random_region = proxy_region[rand::thread_rng().gen_range(0..proxy_region.len())];
     // 构造反代地址
-    let reverse_proxy_address = format!("ProxyIP.{}.fxxk.dedyn.io", region_code);
+    let reverse_proxy_address = format!("ProxyIP.{}.fxxk.dedyn.io", random_region);
 
     // 构造 VLESS 链接
     format!(
         "vless://{}@{}:{}?encryption=none&security=tls&sni={}&fp=random&type=ws&host={}&path=%2Fpyip%3D%5B{}%5D%3A443#{}",
-        uuid, ip, port, fake_addr, fake_addr, reverse_proxy_address, region_code
+        uuid,ip, port,fake_addr,fake_addr,reverse_proxy_address,region_code
     )
+    // format!(
+    //     "vless://{}@{}:{}?encryption=none&security=tls&sni={}&fp=random&type=ws&host={}&path=%2F%3Fed%3D2560#{}",
+    //     uuid,ip, port,fake_addr,fake_addr,region_code
+    // )
 }

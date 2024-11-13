@@ -52,3 +52,10 @@ pub fn change_connected(conn: &Connection, ip: &str, port: u16, can_connected: b
     Ok(())
 }
 
+/// 获得可连接的数量
+pub async fn get_connected_count(conn: &Connection) -> Result<u32,rusqlite::Error> {
+    let mut stmt = conn.prepare("SELECT COUNT(*) FROM connections WHERE can_connected = true")?;
+    let count = stmt.query_row([], |row| row.get::<_, u32>(0))?;
+    Ok(count)
+}
+
