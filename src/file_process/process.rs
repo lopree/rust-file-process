@@ -168,7 +168,7 @@ pub async fn change_can_connected(file_path : &str,conn : &Connection)->Result<(
     Ok(())
 }
 ///从数据库中获取链接
-pub async fn get_links_from_data(uuid : &str,fake_addr : &str)->Result<(), rusqlite::Error>{
+pub async fn get_links_from_data(uuid : &str,uuid_2 : &str,fake_addr : &str,fake_addr_2 : &str)->Result<(), rusqlite::Error>{
    // 从数据库中获取500个ip，port，以及region_code
    let conn = Connection::open("./assets/database.db")?;
    //let mut stmt = conn.prepare("SELECT ip, port, region FROM connections ORDER BY RANDOM() LIMIT 2")?;
@@ -180,32 +180,43 @@ pub async fn get_links_from_data(uuid : &str,fake_addr : &str)->Result<(), rusql
     Ok((ip, port, region_code)) // 返回一个元组
 })?; // 使用 query_map 方法
     let file = File::create("./assets/ips/output_links.txt").unwrap();
+    let racke_nerd_file = File::create("./assets/ips/racke_nerd.txt").unwrap();
     //使用 BufWriter 包装文件,防止格式写入错误
     let mut writer = BufWriter::new(file);
+    let mut racke_nerd_writer = BufWriter::new(racke_nerd_file);
     for result in ip_iter {
         let (ip, port, region_code) = result?; // 解构元组
         // 这里可以处理获取到的 ip, port 和 region_code
-        let link = target_links(&ip,port,&region_code,uuid,fake_addr);
+        let (link1,link2) = target_links(&ip,port,&region_code,uuid,fake_addr,uuid_2,fake_addr_2);
         //写入文件
-        writer.write_all(format!("{}\n", link).as_bytes()).unwrap(); // 添加换行符
+        writer.write_all(format!("{}\n", link1).as_bytes()).unwrap(); // 添加换行符
+        racke_nerd_writer.write_all(format!("{}\n", link2).as_bytes()).unwrap(); // 添加换行符
     }
    Ok(()) // 返回 Ok
 
 }
 
 ///按照指定格式输出链接
-pub fn target_links (ip : &str , port : u16,region_code : &str,uuid: &str,fake_addr : &str) -> String{
+pub fn target_links (ip : &str , port : u16,region_code : &str,uuid: &str,fake_addr : &str,uuid_2 : &str,fake_addr_2 : &str) -> (String,String){
     //随机一个地区
     let proxy_region = vec!["KR","HK","SG","JP","US"];
     let random_region = proxy_region[rand::thread_rng().gen_range(0..proxy_region.len())];
     // 构造反代地址
     let reverse_proxy_address = format!("ProxyIP.{}.fxxk.dedyn.io", random_region);
 
-    // 构造 VLESS 链接
-    format!(
+    // 构造第一种 VLESS 链接
+    let link1 = format!(
         "vless://{}@{}:{}?encryption=none&security=tls&sni={}&fp=random&type=ws&host={}&path=%2Fpyip%3D%5B{}%5D%3A443#{}",
-        uuid,ip, port,fake_addr,fake_addr,reverse_proxy_address,region_code
-    )
+        uuid, ip, port, fake_addr, fake_addr, reverse_proxy_address, region_code
+    );
+
+    // 构造第二种 VLESS 链接
+    let link2 = format!(
+        "vless://{}@{}:{}?encryption=none&security=tls&sni={}&alpn=http%2F1.1&allowInsecure=1&type=ws&host={}&path=%2F#{}",
+        uuid_2, ip, port, fake_addr_2, fake_addr_2, region_code
+    );
+
+    (link1, link2)
     // format!(
     //     "vless://{}@{}:{}?encryption=none&security=tls&sni={}&fp=random&type=ws&host={}&path=%2F%3Fed%3D2560#{}",
     //     uuid,ip, port,fake_addr,fake_addr,region_code

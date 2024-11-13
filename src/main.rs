@@ -6,8 +6,14 @@ use file_process::process::*;
 #[tokio::main] // 使用 tokio 作为异步运行时
 async fn main() {
     let all_constant = const_value().unwrap();
-    let uuid = all_constant.first().unwrap();
+    if all_constant.is_empty() {
+        println!("常量值为空，请检查数据源。");
+        return; // 退出程序或处理错误
+    }
+    let uuid = all_constant.get(0).unwrap();
     let fake_addr = all_constant.get(1).unwrap();
+    let fake_addr_2 = all_constant.get(2).unwrap();
+    let uuid_2 = all_constant.get(3).unwrap();
     let file01_path = "./assets/ips/type01"; 
     let file02_path = "./assets/ips/type02"; 
     let conn = Connection::open("./assets/database.db").expect("Failed to open database");
@@ -57,7 +63,7 @@ async fn main() {
                 let _ = change_can_connected("./assets/ips/link.txt",&conn).await.unwrap();
             }
             5 => {
-                let _ = get_links_from_data(&uuid,fake_addr).await.unwrap();
+                let _ = get_links_from_data(&uuid,&uuid_2,fake_addr,fake_addr_2).await.unwrap();
             }
             6 => {
                 let count = get_connected_count(&conn).await.unwrap();
